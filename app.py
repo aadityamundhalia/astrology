@@ -1,4 +1,4 @@
-# main.py
+# app.py
 from fastapi import FastAPI, HTTPException
 import requests
 from pydantic import BaseModel
@@ -905,6 +905,139 @@ def wildcard_prediction(data: SpecificQueryData) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.post("/horoscope/daily")
+def daily_horoscope(data: BirthData) -> Dict[str, Any]:
+    """
+    Daily Horoscope - Personalized Daily Predictions
+    
+    Based on:
+    - Moon sign (Rashi) transits
+    - Current planetary positions
+    - Daily nakshatra effects
+    - Chandra Lagna (Moon-based house system)
+    
+    Provides:
+    - Overall daily rating (1-10)
+    - Mood and energy level forecast
+    - Lucky elements (colors, numbers, times)
+    - Favorable and cautionary areas
+    - Key planetary influences for the day
+    - Practical daily advice
+    
+    Example:
+    {
+        "date_of_birth": "1990-05-15",
+        "time_of_birth": "14:30",
+        "place_of_birth": "New Delhi, India"
+    }
+    """
+    try:
+        from predictions import generate_daily_horoscope
+        
+        lat, lon = geocode_location(data.place_of_birth)
+        
+        horoscope = generate_daily_horoscope(
+            birth_date=data.date_of_birth,
+            birth_time=data.time_of_birth,
+            lat=lat,
+            lon=lon
+        )
+        
+        return horoscope
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+@app.post("/horoscope/weekly")
+def weekly_horoscope(data: BirthData) -> Dict[str, Any]:
+    """
+    Weekly Horoscope - Week Ahead Predictions
+    
+    Based on:
+    - Major planetary transits for the week
+    - Moon's weekly journey through signs
+    - Daily nakshatra quality ratings
+    - Weekly thematic patterns
+    
+    Provides:
+    - Overall weekly rating (1-10)
+    - Weekly summary and key themes
+    - Day-by-day highlights with Moon positions
+    - Best days of the week
+    - Area-wise focus (career, relationships, finance, health)
+    - Major transit influences
+    
+    Example:
+    {
+        "date_of_birth": "1990-05-15",
+        "time_of_birth": "14:30",
+        "place_of_birth": "New Delhi, India"
+    }
+    """
+    try:
+        from predictions import generate_weekly_horoscope
+        
+        lat, lon = geocode_location(data.place_of_birth)
+        
+        horoscope = generate_weekly_horoscope(
+            birth_date=data.date_of_birth,
+            birth_time=data.time_of_birth,
+            lat=lat,
+            lon=lon
+        )
+        
+        return horoscope
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+@app.post("/horoscope/monthly")
+def monthly_horoscope(data: BirthData) -> Dict[str, Any]:
+    """
+    Monthly Horoscope - Comprehensive Month Ahead Outlook
+    
+    Based on:
+    - Jupiter, Saturn, and Mars major transits
+    - Sun's monthly progression
+    - Retrograde planet impacts
+    - Moon return dates (emotionally significant)
+    - Monthly thematic analysis
+    
+    Provides:
+    - Overall monthly rating (1-10)
+    - Monthly summary and key themes
+    - Major transit positions and effects
+    - Key dates (Moon returns, significant transits)
+    - Detailed area forecasts with advice:
+        * Career outlook and guidance
+        * Relationship dynamics
+        * Financial prospects
+        * Health focus areas
+    - Retrograde planet notifications
+    - Lucky days for important activities
+    
+    Example:
+    {
+        "date_of_birth": "1990-05-15",
+        "time_of_birth": "14:30",
+        "place_of_birth": "New Delhi, India"
+    }
+    """
+    try:
+        from predictions import generate_monthly_horoscope
+        
+        lat, lon = geocode_location(data.place_of_birth)
+        
+        horoscope = generate_monthly_horoscope(
+            birth_date=data.date_of_birth,
+            birth_time=data.time_of_birth,
+            lat=lat,
+            lon=lon
+        )
+        
+        return horoscope
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

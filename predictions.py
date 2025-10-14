@@ -6,7 +6,7 @@ Based on transits, dashas, and natal chart positions
 
 from datetime import datetime, timedelta
 from typing import Dict, List, Any
-from local_calculate import LocalCalculate, PlanetName, ZODIAC_SIGNS
+from local_calculate import LocalCalculate, PlanetName, ZODIAC_SIGNS, calculate_chart
 import calendar
 import re
 
@@ -486,9 +486,17 @@ def generate_area_specific_predictions(natal_chart: Dict, lat: float, lon: float
     # Create overview
     overview = _create_area_overview(area_predictions, area)
     
+    # Calculate prediction period from actual predictions
+    if area_predictions:
+        first_month = area_predictions[0]["month"]
+        last_month = area_predictions[-1]["month"]
+        prediction_period = f"{first_month} to {last_month}"
+    else:
+        prediction_period = f"{start_date.strftime('%B %Y')} to {(start_date + timedelta(days=30*months)).strftime('%B %Y')}"
+    
     return {
         "area": area,
-        "prediction_period": f"{start_date.strftime('%B %Y')} to {(start_date + timedelta(days=30*months)).strftime('%B %Y')}",
+        "prediction_period": prediction_period,
         "generated_at": start_date.strftime("%Y-%m-%d %H:%M:%S"),
         "overview": overview,
         "monthly_predictions": area_predictions,
@@ -1522,3 +1530,557 @@ def _identify_key_strengths(natal_chart: Dict, area: str) -> List[str]:
         strengths = ["Natural resilience and adaptability"]
     
     return strengths[:3]
+
+
+def generate_daily_horoscope(birth_date: str, birth_time: str, lat: float, lon: float) -> Dict[str, Any]:
+    """
+    Generate daily horoscope based on Moon sign (Rashi)
+    Uses current day's transits to provide personalized predictions
+    """
+    
+    # Calculate birth chart to get Moon sign
+    natal_chart = calculate_chart(birth_date, birth_time, lat, lon)
+    moon_sign = natal_chart["planets"]["Moon"]["sign"]
+    ascendant_sign = natal_chart["ascendant"]["sign"]
+    
+    # Get today's date
+    today = datetime.now()
+    jd = LocalCalculate.get_julian_day(today)
+    ayanamsa = LocalCalculate.get_ayanamsa(jd)
+    house_cusps = LocalCalculate.get_house_cusps(jd, lat, lon, ayanamsa)
+    
+    # Calculate today's planetary positions
+    transits = {}
+    for planet_name in [PlanetName.SUN, PlanetName.MOON, PlanetName.MARS,
+                       PlanetName.MERCURY, PlanetName.JUPITER, PlanetName.VENUS,
+                       PlanetName.SATURN]:
+        planet_long = LocalCalculate.get_planet_longitude(planet_name, jd, ayanamsa)
+        planet_house = LocalCalculate.get_planet_house(planet_long, house_cusps)
+        planet_sign, degrees = LocalCalculate.longitude_to_sign(planet_long)
+        nakshatra, pada = LocalCalculate.get_nakshatra(planet_long)
+        
+        transits[planet_name] = {
+            "longitude": round(planet_long, 2),
+            "sign": planet_sign,
+            "house": planet_house,
+            "degrees": round(degrees, 2),
+            "nakshatra": nakshatra,
+            "pada": pada
+        }
+    
+    # Calculate Moon's current position relative to birth Moon
+    moon_transit = transits["Moon"]
+    moon_sign_index = ZODIAC_SIGNS.index(moon_sign)
+    current_moon_index = ZODIAC_SIGNS.index(moon_transit["sign"])
+    
+    # Calculate which house Moon is transiting from natal Moon (Chandra Lagna)
+    moon_house_from_moon = ((current_moon_index - moon_sign_index) % 12) + 1
+    
+    # Interpret based on Moon's transit house from natal Moon
+    moon_transit_effects = {
+        1: {"mood": "Confident", "energy": 8, "advice": "Good day for personal initiatives and self-expression"},
+        2: {"mood": "Stable", "energy": 7, "advice": "Focus on finances and family matters"},
+        3: {"mood": "Active", "energy": 8, "advice": "Communication and short travels favored"},
+        4: {"mood": "Comfortable", "energy": 6, "advice": "Spend time at home, nurture emotional wellbeing"},
+        5: {"mood": "Creative", "energy": 9, "advice": "Excellent for romance, creativity, and speculation"},
+        6: {"mood": "Challenging", "energy": 5, "advice": "Be cautious with health and conflicts"},
+        7: {"mood": "Social", "energy": 8, "advice": "Good for partnerships and collaborations"},
+        8: {"mood": "Introspective", "energy": 4, "advice": "Avoid major decisions, focus on research and introspection"},
+        9: {"mood": "Optimistic", "energy": 9, "advice": "Luck and fortune favor you, pursue higher goals"},
+        10: {"mood": "Ambitious", "energy": 8, "advice": "Career matters highlighted, seek recognition"},
+        11: {"mood": "Rewarding", "energy": 9, "advice": "Gains and fulfillment of desires indicated"},
+        12: {"mood": "Reflective", "energy": 5, "advice": "Time for spirituality and letting go, avoid expenses"}
+    }
+    
+    moon_effect = moon_transit_effects.get(moon_house_from_moon, moon_transit_effects[1])
+    
+    # Analyze key transits
+    key_influences = []
+    
+    # Jupiter's influence
+    jupiter_house = transits["Jupiter"]["house"]
+    if jupiter_house in [1, 2, 5, 7, 9, 11]:
+        key_influences.append(f"Jupiter in {jupiter_house}th house brings expansion and growth")
+    
+    # Saturn's influence
+    saturn_house = transits["Saturn"]["house"]
+    if saturn_house in [3, 6, 11]:
+        key_influences.append(f"Saturn in {saturn_house}th house brings discipline and rewards for hard work")
+    elif saturn_house in [1, 4, 7, 8, 10, 12]:
+        key_influences.append(f"Saturn in {saturn_house}th house requires patience and perseverance")
+    
+    # Mars energy
+    mars_house = transits["Mars"]["house"]
+    if mars_house in [1, 3, 6, 10, 11]:
+        key_influences.append(f"Mars in {mars_house}th house provides energy and courage")
+    
+    # Venus for relationships and pleasures
+    venus_house = transits["Venus"]["house"]
+    if venus_house in [1, 2, 5, 7, 11]:
+        key_influences.append(f"Venus in {venus_house}th house enhances harmony and pleasures")
+    
+    # Lucky number based on day and Moon nakshatra
+    day_num = today.day
+    lucky_numbers = [(day_num % 9) + 1, (day_num % 9) + 2]
+    
+    # Lucky color based on current weekday
+    weekday_colors = {
+        0: "White",      # Monday - Moon
+        1: "Red",        # Tuesday - Mars
+        2: "Green",      # Wednesday - Mercury
+        3: "Yellow",     # Thursday - Jupiter
+        4: "White",      # Friday - Venus
+        5: "Blue",       # Saturday - Saturn
+        6: "Orange"      # Sunday - Sun
+    }
+    lucky_color = weekday_colors[today.weekday()]
+    
+    return {
+        "date": today.strftime("%Y-%m-%d"),
+        "day": today.strftime("%A"),
+        "moon_sign": moon_sign,
+        "ascendant": ascendant_sign,
+        "overall_rating": moon_effect["energy"],
+        "mood": moon_effect["mood"],
+        "energy_level": f"{moon_effect['energy']}/10",
+        "daily_advice": moon_effect["advice"],
+        "key_influences": key_influences[:3],
+        "current_transits": {
+            "moon": f"{moon_transit['sign']} - {moon_transit['nakshatra']}",
+            "sun": f"{transits['Sun']['sign']}",
+            "jupiter": f"{transits['Jupiter']['sign']} (House {jupiter_house})",
+            "saturn": f"{transits['Saturn']['sign']} (House {saturn_house})"
+        },
+        "lucky_elements": {
+            "color": lucky_color,
+            "numbers": lucky_numbers,
+            "time": "Early morning (6-8 AM) and Evening (6-8 PM)"
+        },
+        "areas_of_focus": {
+            "favorable": _get_favorable_areas(moon_house_from_moon, transits),
+            "caution": _get_caution_areas(moon_house_from_moon, transits)
+        }
+    }
+
+
+def generate_weekly_horoscope(birth_date: str, birth_time: str, lat: float, lon: float) -> Dict[str, Any]:
+    """
+    Generate weekly horoscope based on Moon sign
+    Analyzes the week ahead using planetary transits
+    """
+    
+    # Calculate birth chart
+    natal_chart = calculate_chart(birth_date, birth_time, lat, lon)
+    moon_sign = natal_chart["planets"]["Moon"]["sign"]
+    ascendant_sign = natal_chart["ascendant"]["sign"]
+    
+    # Get current week dates
+    today = datetime.now()
+    week_start = today - timedelta(days=today.weekday())  # Monday
+    week_end = week_start + timedelta(days=6)  # Sunday
+    
+    # Analyze mid-week (Wednesday) transits for overall week
+    mid_week = week_start + timedelta(days=2)
+    jd = LocalCalculate.get_julian_day(mid_week)
+    ayanamsa = LocalCalculate.get_ayanamsa(jd)
+    house_cusps = LocalCalculate.get_house_cusps(jd, lat, lon, ayanamsa)
+    
+    # Calculate planetary positions for the week
+    week_transits = {}
+    for planet_name in [PlanetName.SUN, PlanetName.MOON, PlanetName.MARS,
+                       PlanetName.MERCURY, PlanetName.JUPITER, PlanetName.VENUS,
+                       PlanetName.SATURN]:
+        planet_long = LocalCalculate.get_planet_longitude(planet_name, jd, ayanamsa)
+        planet_house = LocalCalculate.get_planet_house(planet_long, house_cusps)
+        planet_sign, degrees = LocalCalculate.longitude_to_sign(planet_long)
+        
+        week_transits[planet_name] = {
+            "sign": planet_sign,
+            "house": planet_house,
+            "degrees": round(degrees, 2)
+        }
+    
+    # Calculate week rating based on major planet positions
+    week_score = 5  # Base score
+    
+    # Jupiter influence
+    if week_transits["Jupiter"]["house"] in [1, 2, 5, 7, 9, 11]:
+        week_score += 2
+    
+    # Saturn influence
+    if week_transits["Saturn"]["house"] in [3, 6, 11]:
+        week_score += 1
+    elif week_transits["Saturn"]["house"] in [8, 12]:
+        week_score -= 1
+    
+    # Mars influence
+    if week_transits["Mars"]["house"] in [3, 6, 10, 11]:
+        week_score += 1
+    elif week_transits["Mars"]["house"] in [8, 12]:
+        week_score -= 1
+    
+    week_score = max(1, min(10, week_score))
+    
+    # Day-by-day brief predictions
+    daily_highlights = []
+    current_day = week_start
+    
+    for i in range(7):
+        day_jd = LocalCalculate.get_julian_day(current_day)
+        day_ayanamsa = LocalCalculate.get_ayanamsa(day_jd)
+        
+        # Get Moon's position for each day
+        moon_long = LocalCalculate.get_planet_longitude(PlanetName.MOON, day_jd, day_ayanamsa)
+        moon_sign_day, _ = LocalCalculate.longitude_to_sign(moon_long)
+        nakshatra, _ = LocalCalculate.get_nakshatra(moon_long)
+        
+        # Simple day rating based on Moon nakshatra
+        favorable_nakshatras = ["Rohini", "Pushya", "Hasta", "Shravana", "Revati", "Ashwini", "Uttara Phalguni"]
+        day_quality = "Good" if nakshatra in favorable_nakshatras else "Moderate"
+        
+        daily_highlights.append({
+            "date": current_day.strftime("%Y-%m-%d"),
+            "day": current_day.strftime("%A"),
+            "moon_transit": moon_sign_day,
+            "nakshatra": nakshatra,
+            "quality": day_quality
+        })
+        
+        current_day += timedelta(days=1)
+    
+    # Weekly themes based on transit patterns
+    weekly_themes = []
+    
+    # Check for significant aspects or patterns
+    sun_house = week_transits["Sun"]["house"]
+    if sun_house in [1, 5, 9, 10]:
+        weekly_themes.append("Career and personal recognition highlighted")
+    
+    venus_house = week_transits["Venus"]["house"]
+    if venus_house in [1, 5, 7]:
+        weekly_themes.append("Relationships and social connections flourish")
+    
+    mercury_house = week_transits["Mercury"]["house"]
+    if mercury_house in [1, 2, 3, 10]:
+        weekly_themes.append("Communication and business matters favored")
+    
+    return {
+        "week_period": f"{week_start.strftime('%B %d')} - {week_end.strftime('%B %d, %Y')}",
+        "moon_sign": moon_sign,
+        "ascendant": ascendant_sign,
+        "overall_rating": week_score,
+        "week_summary": _generate_week_summary(week_score, weekly_themes),
+        "weekly_themes": weekly_themes,
+        "key_transits": {
+            "jupiter": f"{week_transits['Jupiter']['sign']} (House {week_transits['Jupiter']['house']})",
+            "saturn": f"{week_transits['Saturn']['sign']} (House {week_transits['Saturn']['house']})",
+            "mars": f"{week_transits['Mars']['sign']} (House {week_transits['Mars']['house']})",
+            "venus": f"{week_transits['Venus']['sign']} (House {week_transits['Venus']['house']})"
+        },
+        "daily_highlights": daily_highlights,
+        "best_days": [d["day"] for d in daily_highlights if d["quality"] == "Good"][:3],
+        "areas_to_focus": {
+            "career": _rate_area_for_period("career", week_transits),
+            "relationships": _rate_area_for_period("relationships", week_transits),
+            "finance": _rate_area_for_period("finance", week_transits),
+            "health": _rate_area_for_period("health", week_transits)
+        }
+    }
+
+
+def generate_monthly_horoscope(birth_date: str, birth_time: str, lat: float, lon: float) -> Dict[str, Any]:
+    """
+    Generate monthly horoscope based on Moon sign
+    Provides comprehensive monthly outlook using major transits
+    """
+    
+    # Calculate birth chart
+    natal_chart = calculate_chart(birth_date, birth_time, lat, lon)
+    moon_sign = natal_chart["planets"]["Moon"]["sign"]
+    ascendant_sign = natal_chart["ascendant"]["sign"]
+    
+    # Get current month dates
+    today = datetime.now()
+    month_start = datetime(today.year, today.month, 1)
+    
+    # Calculate last day of month
+    if today.month == 12:
+        month_end = datetime(today.year + 1, 1, 1) - timedelta(days=1)
+    else:
+        month_end = datetime(today.year, today.month + 1, 1) - timedelta(days=1)
+    
+    # Analyze mid-month transits
+    mid_month = month_start + timedelta(days=15)
+    jd = LocalCalculate.get_julian_day(mid_month)
+    ayanamsa = LocalCalculate.get_ayanamsa(jd)
+    house_cusps = LocalCalculate.get_house_cusps(jd, lat, lon, ayanamsa)
+    
+    # Calculate major planetary positions for the month
+    month_transits = {}
+    for planet_name in [PlanetName.SUN, PlanetName.MARS, PlanetName.MERCURY,
+                       PlanetName.JUPITER, PlanetName.VENUS, PlanetName.SATURN]:
+        planet_long = LocalCalculate.get_planet_longitude(planet_name, jd, ayanamsa)
+        planet_house = LocalCalculate.get_planet_house(planet_long, house_cusps)
+        planet_sign, degrees = LocalCalculate.longitude_to_sign(planet_long)
+        is_retro = LocalCalculate.is_planet_retrograde(planet_name, jd)
+        
+        month_transits[planet_name] = {
+            "sign": planet_sign,
+            "house": planet_house,
+            "degrees": round(degrees, 2),
+            "retrograde": is_retro
+        }
+    
+    # Calculate overall month rating
+    month_score = 5
+    
+    # Jupiter's monthly influence
+    jupiter_house = month_transits["Jupiter"]["house"]
+    if jupiter_house in [1, 2, 5, 7, 9, 11]:
+        month_score += 2
+        jupiter_effect = "highly favorable"
+    elif jupiter_house in [6, 8, 12]:
+        jupiter_effect = "requires patience"
+    else:
+        jupiter_effect = "neutral"
+    
+    # Saturn's monthly influence
+    saturn_house = month_transits["Saturn"]["house"]
+    if saturn_house in [3, 6, 11]:
+        month_score += 1
+        saturn_effect = "rewards hard work"
+    elif saturn_house in [1, 4, 7, 8, 10, 12]:
+        month_score -= 1
+        saturn_effect = "brings challenges requiring persistence"
+    else:
+        saturn_effect = "neutral"
+    
+    # Mars energy for the month
+    mars_house = month_transits["Mars"]["house"]
+    if mars_house in [3, 6, 10, 11]:
+        month_score += 1
+        mars_effect = "energizes"
+    elif mars_house in [8, 12]:
+        mars_effect = "requires caution"
+    else:
+        mars_effect = "moderate"
+    
+    month_score = max(1, min(10, month_score))
+    
+    # Identify key dates (New Moon and Full Moon approximations)
+    key_dates = []
+    
+    # Find days when Moon is in same sign as natal Moon (emotional high points)
+    current_check = month_start
+    while current_check <= month_end:
+        check_jd = LocalCalculate.get_julian_day(current_check)
+        check_ayanamsa = LocalCalculate.get_ayanamsa(check_jd)
+        moon_long = LocalCalculate.get_planet_longitude(PlanetName.MOON, check_jd, check_ayanamsa)
+        moon_sign_check, _ = LocalCalculate.longitude_to_sign(moon_long)
+        
+        if moon_sign_check == moon_sign:
+            key_dates.append({
+                "date": current_check.strftime("%Y-%m-%d"),
+                "significance": "Moon returns to your sign - good for personal matters"
+            })
+        
+        current_check += timedelta(days=1)
+    
+    # Monthly themes
+    monthly_themes = []
+    
+    sun_house = month_transits["Sun"]["house"]
+    if sun_house in [1, 5, 9, 10]:
+        monthly_themes.append("Personal growth and recognition")
+    elif sun_house in [2, 11]:
+        monthly_themes.append("Financial gains and stability")
+    
+    if month_transits["Venus"]["house"] in [1, 5, 7, 11]:
+        monthly_themes.append("Harmonious relationships and social pleasures")
+    
+    if month_transits["Mercury"]["house"] in [1, 3, 6, 10]:
+        monthly_themes.append("Enhanced communication and intellectual pursuits")
+    
+    # Check for retrograde impacts
+    retrograde_planets = [p for p, data in month_transits.items() if data.get("retrograde")]
+    if retrograde_planets:
+        monthly_themes.append(f"{', '.join(retrograde_planets)} retrograde - review and revise")
+    
+    return {
+        "month": month_start.strftime("%B %Y"),
+        "period": f"{month_start.strftime('%B %d')} - {month_end.strftime('%B %d, %Y')}",
+        "moon_sign": moon_sign,
+        "ascendant": ascendant_sign,
+        "overall_rating": month_score,
+        "month_summary": _generate_month_summary(month_score, monthly_themes),
+        "key_themes": monthly_themes[:4],
+        "major_transits": {
+            "jupiter": {
+                "position": f"{month_transits['Jupiter']['sign']} (House {jupiter_house})",
+                "effect": jupiter_effect
+            },
+            "saturn": {
+                "position": f"{month_transits['Saturn']['sign']} (House {saturn_house})",
+                "effect": saturn_effect
+            },
+            "mars": {
+                "position": f"{month_transits['Mars']['sign']} (House {mars_house})",
+                "effect": mars_effect
+            }
+        },
+        "retrograde_planets": retrograde_planets,
+        "key_dates": key_dates[:3],  # Top 3 significant dates
+        "areas_forecast": {
+            "career": {
+                "rating": _rate_area_for_period("career", month_transits),
+                "advice": _get_area_advice("career", month_transits)
+            },
+            "relationships": {
+                "rating": _rate_area_for_period("relationships", month_transits),
+                "advice": _get_area_advice("relationships", month_transits)
+            },
+            "finance": {
+                "rating": _rate_area_for_period("finance", month_transits),
+                "advice": _get_area_advice("finance", month_transits)
+            },
+            "health": {
+                "rating": _rate_area_for_period("health", month_transits),
+                "advice": _get_area_advice("health", month_transits)
+            }
+        },
+        "lucky_days": [d["date"] for d in key_dates]
+    }
+
+
+# Helper functions for horoscope generation
+
+def _get_favorable_areas(moon_house: int, transits: Dict) -> List[str]:
+    """Get favorable areas based on Moon position and transits"""
+    favorable = []
+    
+    house_areas = {
+        1: ["Personal growth", "New initiatives"],
+        2: ["Financial planning", "Family time"],
+        3: ["Communication", "Learning"],
+        4: ["Home improvement", "Emotional bonding"],
+        5: ["Creative projects", "Romance"],
+        6: ["Health routines", "Service"],
+        7: ["Partnerships", "Negotiations"],
+        8: ["Research", "Transformation"],
+        9: ["Higher learning", "Travel"],
+        10: ["Career advancement", "Public recognition"],
+        11: ["Networking", "Achieving goals"],
+        12: ["Spirituality", "Letting go"]
+    }
+    
+    favorable = house_areas.get(moon_house, ["General wellbeing"])
+    
+    # Add transit-based favorable areas
+    if transits["Jupiter"]["house"] in [1, 5, 9]:
+        favorable.append("Learning and wisdom")
+    
+    return favorable[:3]
+
+
+def _get_caution_areas(moon_house: int, transits: Dict) -> List[str]:
+    """Get areas requiring caution"""
+    caution = []
+    
+    if moon_house in [6, 8, 12]:
+        caution.append("Avoid major commitments")
+    
+    if transits["Saturn"]["house"] in [8, 12]:
+        caution.append("Financial caution advised")
+    
+    if transits["Mars"]["house"] in [6, 8, 12]:
+        caution.append("Manage anger and impulsiveness")
+    
+    if not caution:
+        caution = ["None significant"]
+    
+    return caution[:2]
+
+
+def _generate_week_summary(rating: int, themes: List[str]) -> str:
+    """Generate weekly summary text"""
+    if rating >= 8:
+        tone = "Excellent week ahead!"
+    elif rating >= 6:
+        tone = "Positive week with good opportunities."
+    elif rating >= 4:
+        tone = "Mixed week requiring balance."
+    else:
+        tone = "Challenging week - stay focused."
+    
+    theme_text = " ".join(themes[:2]) if themes else "General stability indicated."
+    return f"{tone} {theme_text}"
+
+
+def _generate_month_summary(rating: int, themes: List[str]) -> str:
+    """Generate monthly summary text"""
+    if rating >= 8:
+        tone = "Highly favorable month!"
+    elif rating >= 6:
+        tone = "Promising month with growth opportunities."
+    elif rating >= 4:
+        tone = "Balanced month requiring mindful action."
+    else:
+        tone = "Challenging month - patience and perseverance needed."
+    
+    theme_text = " ".join(themes[:2]) if themes else "Steady progress indicated."
+    return f"{tone} {theme_text}"
+
+
+def _rate_area_for_period(area: str, transits: Dict) -> int:
+    """Rate a life area (1-10) based on transits"""
+    score = 5
+    
+    area_planets = {
+        "career": ["Sun", "Saturn", "Jupiter"],
+        "relationships": ["Venus", "Jupiter"],
+        "finance": ["Jupiter", "Venus"],
+        "health": ["Sun", "Mars"]
+    }
+    
+    key_planets = area_planets.get(area, ["Jupiter"])
+    
+    for planet in key_planets:
+        if planet in transits:
+            house = transits[planet]["house"]
+            if house in [1, 2, 5, 7, 9, 10, 11]:
+                score += 1
+            elif house in [6, 8, 12]:
+                score -= 1
+    
+    return max(1, min(10, score))
+
+
+def _get_area_advice(area: str, transits: Dict) -> str:
+    """Get specific advice for a life area"""
+    rating = _rate_area_for_period(area, transits)
+    
+    advice_map = {
+        "career": {
+            "high": "Excellent time for career advancement. Take initiative on important projects.",
+            "medium": "Steady progress in career. Focus on building skills and relationships.",
+            "low": "Career challenges require patience. Avoid major changes, focus on stability."
+        },
+        "relationships": {
+            "high": "Harmonious period for relationships. Good time for commitments.",
+            "medium": "Relationships stable. Communication is key to growth.",
+            "low": "Relationships need attention. Practice patience and understanding."
+        },
+        "finance": {
+            "high": "Financial gains indicated. Good time for investments.",
+            "medium": "Financial stability maintained. Plan for future growth.",
+            "low": "Financial caution advised. Avoid risks and focus on saving."
+        },
+        "health": {
+            "high": "Good vitality and energy. Maintain healthy routines.",
+            "medium": "Health stable. Regular exercise and diet important.",
+            "low": "Health needs attention. Avoid stress and maintain regular checkups."
+        }
+    }
+    
+    level = "high" if rating >= 7 else "medium" if rating >= 5 else "low"
+    return advice_map.get(area, {}).get(level, "Stay balanced and mindful.")
