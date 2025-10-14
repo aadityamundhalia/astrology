@@ -854,6 +854,50 @@ def _get_overall_guidance(area: str, avg_rating: float, trend: str) -> str:
     return f"This is a {quality} period for {area}. {action.capitalize()}. {trend}"
 
 
+def _fix_date_format(date_str: str) -> str:
+    """Try to fix common date format issues"""
+    import re
+    
+    # Handle cases like "2025-11-2025" -> assume it's "2025-11-25" (day repeated)
+    if re.match(r'^\d{4}-\d{2}-\d{4}$', date_str):
+        parts = date_str.split('-')
+        if len(parts) == 3:
+            year1, month, year2 = parts
+            if year1 == year2[:4]:  # Year repeated
+                # Extract the day from the repeated year part
+                if len(year2) > 4:
+                    day_str = year2[4:]
+                else:
+                    # If year is exactly repeated, assume the day is the last two digits
+                    day_str = year2[-2:]
+                
+                if day_str and day_str.isdigit():
+                    day = int(day_str)
+                    if 1 <= day <= 31:
+                        return f"{year1}-{month}-{day:02d}"
+    
+    # Handle other common formats
+    # MM/DD/YYYY -> YYYY-MM-DD
+    match = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{4})$', date_str)
+    if match:
+        month, day, year = match.groups()
+        try:
+            return f"{year}-{int(month):02d}-{int(day):02d}"
+        except ValueError:
+            pass
+    
+    # DD/MM/YYYY -> YYYY-MM-DD  
+    match = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{4})$', date_str)
+    if match:
+        day, month, year = match.groups()
+        try:
+            return f"{year}-{int(month):02d}-{int(day):02d}"
+        except ValueError:
+            pass
+    
+    return None
+
+
 def generate_wildcard_prediction(natal_chart: Dict, lat: float, lon: float,
                                  query: str, specific_date: str = None) -> Dict[str, Any]:
     """
@@ -870,7 +914,7 @@ def generate_wildcard_prediction(natal_chart: Dict, lat: float, lon: float,
         Detailed prediction with success probability, timing, and advice
     """
     
-    # Extract date from query if not provided
+    # Extract date from query if not provided or invalid
     if not specific_date:
         specific_date = extract_date_from_query(query)
     
@@ -880,11 +924,33 @@ def generate_wildcard_prediction(natal_chart: Dict, lat: float, lon: float,
         specific_date = target_date.strftime("%Y-%m-%d")
         date_extracted = False
     else:
-        date_extracted = True
+        # Validate and fix the provided specific_date
+        try:
+            # Try to parse the date to validate format
+            datetime.strptime(specific_date, "%Y-%m-%d")
+            date_extracted = True
+        except ValueError:
+            # Try to fix common date format issues
+            fixed_date = _fix_date_format(specific_date)
+            if fixed_date:
+                specific_date = fixed_date
+                date_extracted = True
+            else:
+                # If specific_date is invalid and can't be fixed, try to extract from query
+                extracted_date = extract_date_from_query(query)
+                if extracted_date:
+                    specific_date = extracted_date
+                    date_extracted = True
+                else:
+                    # If no valid date found anywhere, use fallback
+                    target_date = datetime.now() + timedelta(days=15)
+                    specific_date = target_date.strftime("%Y-%m-%d")
+                    date_extracted = False
     
     try:
         event_date = datetime.strptime(specific_date, "%Y-%m-%d")
     except ValueError:
+        # Final fallback if all else fails
         event_date = datetime.now() + timedelta(days=15)
         date_extracted = False
     
