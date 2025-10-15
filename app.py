@@ -649,6 +649,9 @@ def predict_love_24months(data: PredictionRequest) -> Dict[str, Any]:
         months = ((end_date.year - start_date.year) * 12 + end_date.month - start_date.month)
         months = max(1, months)  # At least 1 month
         
+        if months > 12:
+            raise HTTPException(status_code=400, detail="Max 12 months")
+        
         predictions = generate_area_specific_predictions(
             chart, lat, lon, "love", months=months, start_date=start_date
         )
@@ -703,6 +706,9 @@ def predict_health_24months(data: PredictionRequest) -> Dict[str, Any]:
         # Calculate number of months
         months = ((end_date.year - start_date.year) * 12 + end_date.month - start_date.month)
         months = max(1, months)  # At least 1 month
+        
+        if months > 12:
+            raise HTTPException(status_code=400, detail="Max 12 months")
         
         predictions = generate_area_specific_predictions(
             chart, lat, lon, "health", months=months, start_date=start_date
@@ -759,6 +765,9 @@ def predict_career_24months(data: PredictionRequest) -> Dict[str, Any]:
         months = ((end_date.year - start_date.year) * 12 + end_date.month - start_date.month)
         months = max(1, months)  # At least 1 month
         
+        if months > 12:
+            raise HTTPException(status_code=400, detail="Max 12 months")
+        
         predictions = generate_area_specific_predictions(
             chart, lat, lon, "career", months=months, start_date=start_date
         )
@@ -813,6 +822,9 @@ def predict_wealth_24months(data: PredictionRequest) -> Dict[str, Any]:
         # Calculate number of months
         months = ((end_date.year - start_date.year) * 12 + end_date.month - start_date.month)
         months = max(1, months)  # At least 1 month
+        
+        if months > 12:
+            raise HTTPException(status_code=400, detail="Max 12 months")
         
         predictions = generate_area_specific_predictions(
             chart, lat, lon, "wealth", months=months, start_date=start_date
