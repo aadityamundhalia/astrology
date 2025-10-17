@@ -1,13 +1,131 @@
 # app.py
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 import requests
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 from typing import Dict, Any
 from local_calculate import LocalCalculate, calculate_chart
 from predictions import generate_yearly_predictions
+import logging
+import logging.handlers
+from pathlib import Path
+import traceback
+import json
+
+# Create logs directory if it doesn't exist
+logs_dir = Path("logs")
+logs_dir.mkdir(exist_ok=True)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),  # Console output
+        logging.handlers.RotatingFileHandler(
+            logs_dir / 'app.log',
+            maxBytes=10*1024*1024,  # 10MB
+            backupCount=5
+        ),
+    ]
+)
+
+# Add error handler separately
+error_handler = logging.handlers.RotatingFileHandler(
+    logs_dir / 'errors.log',
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5
+)
+error_handler.setLevel(logging.ERROR)
+error_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+logging.getLogger().addHandler(error_handler)
+
+logger = logging.getLogger(__name__)
+root_logger = logging.getLogger()
 
 app = FastAPI(title="Vedic Astrology API - Local", debug=True)
+
+@app.get("/")
+def root():
+    """Root endpoint"""
+    return {
+        "service": "Vedic Astrology API",
+        "version": "2.2.0",
+        "status": "running",
+        "documentation": "/docs",
+        "endpoints": {
+            "charts": ["/chart/complete", "/chart/quick"],
+            "predictions": [
+                "/predictions/today",
+                "/predictions/week", 
+                "/predictions/month",
+                "/predictions/quarter",
+                "/predictions/yearly"
+            ],
+            "area_specific": [
+                "/predictions/love",
+                "/predictions/career",
+                "/predictions/wealth",
+                "/predictions/health"
+            ],
+            "wildcard": "/predictions/wildcard"
+        }
+    }
+
+# Exception handler middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = datetime.now()
+    
+    try:
+        response = await call_next(request)
+        
+        # Log successful requests
+        process_time = (datetime.now() - start_time).total_seconds()
+        logger.info(f"Request: {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.3f}s - Client: {request.client.host if request.client else 'unknown'}")
+        
+        return response
+    except Exception as e:
+        # Log the full error details
+        process_time = (datetime.now() - start_time).total_seconds()
+        error_details = {
+            "method": request.method,
+            "url": str(request.url),
+            "headers": dict(request.headers),
+            "client": request.client.host if request.client else None,
+            "process_time": f"{process_time:.3f}s",
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "traceback": traceback.format_exc()
+        }
+        
+        root_logger.error(f"Unhandled exception: {json.dumps(error_details, indent=2)}")
+        
+        # Re-raise the exception to let FastAPI handle it
+        raise
+
+# Global exception handler for unhandled exceptions
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    # Log the full error details
+    error_details = {
+        "method": request.method,
+        "url": str(request.url),
+        "headers": dict(request.headers),
+        "client": request.client.host if request.client else None,
+        "error_type": type(exc).__name__,
+        "error_message": str(exc),
+        "traceback": traceback.format_exc()
+    }
+    
+    root_logger.error(f"Unhandled exception in route handler: {json.dumps(error_details, indent=2)}")
+    
+    # Return a 500 error response
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"}
+    )
 
 class BirthData(BaseModel):
     date_of_birth: str  # YYYY-MM-DD
@@ -56,7 +174,6 @@ def geocode_location(place: str) -> tuple[float, float]:
     lon = float(location['lon'])
     
     return lat, lon
-
 
 @app.post("/chart/complete")
 def get_complete_chart(data: BirthData) -> Dict[str, Any]:
@@ -226,6 +343,8 @@ def today_prediction(data: BirthData) -> Dict[str, Any]:
         }
         
     except Exception as e:
+        # Log the error before raising HTTPException
+        root_logger.error(f"Error in today_prediction: {str(e)} - Birth data: {data.dict()}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
@@ -659,6 +778,7 @@ def predict_love_24months(data: PredictionRequest) -> Dict[str, Any]:
         return predictions
         
     except Exception as e:
+        logger.error(f"Error in predict_love_24months: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
@@ -717,6 +837,7 @@ def predict_health_24months(data: PredictionRequest) -> Dict[str, Any]:
         return predictions
         
     except Exception as e:
+        logger.error(f"Error in predict_health_24months: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
@@ -775,6 +896,7 @@ def predict_career_24months(data: PredictionRequest) -> Dict[str, Any]:
         return predictions
         
     except Exception as e:
+        logger.error(f"Error in predict_career_24months: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
@@ -833,6 +955,7 @@ def predict_wealth_24months(data: PredictionRequest) -> Dict[str, Any]:
         return predictions
         
     except Exception as e:
+        logger.error(f"Error in predict_wealth_24months: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 

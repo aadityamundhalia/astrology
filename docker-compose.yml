@@ -1,8 +1,39 @@
-version: '3.8'
-
 services:
   vedastro-api:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8087:8087"
     restart: unless-stopped
+    networks:
+      - vedastro-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  vedastro-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    ports:
+      - "8585:8585"
+    depends_on:
+      - vedastro-api
+    restart: unless-stopped
+    networks:
+      - vedastro-network
+    environment:
+      - VEDASTRO_API_URL=http://vedastro-api:8087
+      - MCP_PORT=8585
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8585/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  vedastro-network:
+    driver: bridge

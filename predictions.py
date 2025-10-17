@@ -813,8 +813,16 @@ def _create_area_overview(predictions: List[Dict], area: str) -> Dict:
     first_half = predictions[:len(predictions)//2]
     second_half = predictions[len(predictions)//2:]
     
-    first_avg = sum(p["rating"] for p in first_half) / len(first_half)
-    second_avg = sum(p["rating"] for p in second_half) / len(second_half)
+    # Handle edge cases where halves might be empty
+    if not first_half:
+        first_avg = avg_rating  # Use overall average if no first half
+    else:
+        first_avg = sum(p["rating"] for p in first_half) / len(first_half)
+    
+    if not second_half:
+        second_avg = avg_rating  # Use overall average if no second half
+    else:
+        second_avg = sum(p["rating"] for p in second_half) / len(second_half)
     
     if second_avg > first_avg + 1:
         trend = "Improving - Things get better as time progresses"
